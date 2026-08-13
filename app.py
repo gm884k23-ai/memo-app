@@ -14,13 +14,16 @@ def load_memos():
         return []
     with open(CSV_PATH, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        rows = list(reader)
-        fieldnames = reader.fieldnames or []
-        needs_migration = rows and ("id" not in fieldnames or "owner" not in fieldnames)
-    if needs_migration:
-        for row in rows:
-            row.setdefault("id", uuid.uuid4().hex)
-            row.setdefault("owner", "")
+        rows = [row for row in reader if (row.get("メモ") or "").strip()]
+    changed = False
+    for row in rows:
+        if not row.get("id"):
+            row["id"] = uuid.uuid4().hex
+            changed = True
+        if row.get("owner") is None:
+            row["owner"] = ""
+            changed = True
+    if changed:
         save_memos(rows)
     return rows
 
@@ -39,13 +42,16 @@ def check_password():
     username = st.text_input("ユーザー名")
     password = st.text_input("パスワード", type="password")
     if st.button("ログイン"):
-        users = st.secrets.get("users", {})
-        if username in users and users[username] == password:
-            st.session_state.authenticated = True
-            st.session_state.username = username
-            st.rerun()
+        if not username.strip() or not password:
+            st.warning("ユーザー名とパスワードを入力してください")
         else:
-            st.error("ユーザー名またはパスワードが違います")
+            users = st.secrets.get("users", {})
+            if users.get(username) == password:
+                st.session_state.authenticated = True
+                st.session_state.username = username
+                st.rerun()
+            else:
+                st.error("ユーザー名またはパスワードが違います")
     return False
 
 
@@ -96,23 +102,26 @@ else:
         mid = m["id"]
         with st.container(border=True):
             if st.session_state.editing_id == mid:
-                new_text = st.text_area("メモを編集", value=m["メモ"], key=f"edit_{mid}")
+                new_text = st.text_area("メモを編集", value=m.get("メモ", ""), key=f"edit_{mid}")
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("保存し直す", key=f"save_{mid}"):
-                        for row in all_memos:
-                            if row["id"] == mid:
-                                row["メモ"] = new_text
-                        save_memos(all_memos)
-                        st.session_state.editing_id = None
-                        st.rerun()
+                        if not new_text.strip():
+                            st.warning("メモを入力してください")
+                        else:
+                            for row in all_memos:
+                                if row["id"] == mid:
+                                    row["メモ"] = new_text
+                            save_memos(all_memos)
+                            st.session_state.editing_id = None
+                            st.rerun()
                 with col2:
                     if st.button("キャンセル", key=f"cancel_{mid}"):
                         st.session_state.editing_id = None
                         st.rerun()
             else:
-                st.caption(m["日時"])
-                st.write(m["メモ"])
+                st.caption(m.get("日時", ""))
+                st.write(m.get("メモ", ""))
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("編集", key=f"editbtn_{mid}"):
